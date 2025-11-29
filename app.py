@@ -2,110 +2,68 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
-import plotly.express as px
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-st.set_page_config(page_title="Loan Approval Prediction", layout="wide")
+model = joblib.load("loan_xgb_model.pkl")
+le = joblib.load("label_encoder.pkl")
+num_cols = joblib.load("num_cols.pkl")
+cat_cols = joblib.load("cat_cols.pkl")
+df = pd.read_csv("loan_data.csv")
 
-model = joblib.load("xgb_best_model.pkl")
+for col in cat_cols:
+    df[col] = le.fit_transform(df[col])
 
 st.title("Loan Approval Prediction Dashboard")
+st.header("Enter Applicant Details")
 
-col1, col2 = st.columns(2)
+user_input = {}
+with st.form("loan_form"):
+    st.subheader("Numeric Features")
+    for col in num_cols:
+        val = st.number_input(col, value=0)
+        user_input[col] = val
 
-with col1:
-    age = st.number_input("Age", 18, 100, 25)
-    gender = st.selectbox("Gender", ["Male", "Female"])
-    education = st.selectbox("Education Level", ["High School", "Bachelor", "Master", "PhD", "Other"])
-    income = st.number_input("Annual Income", 0, 5000000, 50000)
-    emp_exp = st.number_input("Employment Years", 0, 40, 2)
-    home = st.selectbox("Home Ownership", ["RENT", "MORTGAGE", "OWN", "OTHER"])
+    st.subheader("Categorical Features")
+    for col in cat_cols:
+        options = sorted(df[col].unique())
+        val = st.selectbox(col, options)
+        user_input[col] = val
 
-with col2:
-    loan_amt = st.number_input("Loan Amount", 0, 500000, 10000)
-    loan_intent = st.selectbox("Loan Purpose", ["EDUCATION", "MEDICAL", "PERSONAL", "VENTURE", "HOME_IMPROVEMENT", "OTHER"])
-    loan_int_rate = st.number_input("Loan Interest Rate (%)", 0.0, 30.0, 12.0)
-    loan_percent_income = st.number_input("Loan % of Income", 0.0, 1.0, 0.10)
-    cred_hist = st.number_input("Credit History Length", 0, 40, 5)
-    credit_score = st.number_input("Credit Score", 300, 850, 650)
-    prev_default = st.selectbox("Previous Loan Default", ["Yes", "No"])
+    submitted = st.form_submit_button("Submit")
 
-mapping = {
-    "Gender": {"Male": 0, "Female": 1},
-    "Education": {"High School": 0, "Bachelor": 1, "Master": 2, "PhD": 3, "Other": 4},
-    "Home": {"RENT": 0, "MORTGAGE": 1, "OWN": 2, "OTHER": 3},
-    "Intent": {"EDUCATION": 0, "MEDICAL": 1, "PERSONAL": 2, "VENTURE": 3, "HOME_IMPROVEMENT": 4, "OTHER": 5},
-    "Default": {"Yes": 1, "No": 0}
-}
+if submitted:
+    input_df = pd.DataFrame([user_input])
+    for col in cat_cols:
+        input_df[col] = le.transform(input_df[col])
 
-input_data = pd.DataFrame({
-    "person_age": [age],
-    "person_gender": [mapping["Gender"][gender]],
-    "person_education": [mapping["Education"][education]],
-    "person_income": [income],
-    "person_emp_exp": [emp_exp],
-    "person_home_ownership": [mapping["Home"][home]],
-    "loan_amnt": [loan_amt],
-    "loan_intent": [mapping["Intent"][loan_intent]],
-    "loan_int_rate": [loan_int_rate],
-    "loan_percent_income": [loan_percent_income],
-    "cb_person_cred_hist_length": [cred_hist],
-    "credit_score": [credit_score],
-    "previous_loan_defaults_on_file": [mapping["Default"][prev_default]]
-})
+    prob = model.predict_proba(input_df)[:,1][0]
+    pred = model.predict(input_df)[0]
 
-st.subheader("Entered Data")
-st.dataframe(input_data)
+    st.subheader("Entered Data")
+    st.dataframe(input_df)
 
-prediction = model.predict(input_data)[0]
-probability = model.predict_proba(input_data)[0][1]
+    st.subheader("Loan Decision")
+    if pred == 1:
+        st.write("Loan Approved")
+    else:
+        st.write("Loan Rejected")
 
-status = "Approved" if prediction == 1 else "Rejected"
+    st.subheader("Approval Probability")
+    st.progress(int(prob*100))
 
-st.subheader("Loan Decision")
-st.markdown(
-    f"<h2 style='color:{'green' if status=='Approved' else 'red'}'>{status}</h2>",
-    unsafe_allow_html=True
-)
+    st.subheader("Risk Analysis")
+    if prob >= 0.75:
+        st.write("Low Risk")
+    elif prob >= 0.5:
+        st.write("Moderate Risk")
+    else:
+        st.write("High Risk")
 
-st.metric("Approval Probability", f"{probability*100:.2f}%")
-
-risk = 100 - (probability * 100)
-st.progress(int(risk))
-
-st.subheader("Risk Analysis")
-
-risks = []
-
-if credit_score < 600:
-    risks.append("Low credit score")
-if loan_percent_income > 0.30:
-    risks.append("Loan amount is too high relative to income")
-if prev_default == "Yes":
-    risks.append("Previous loan default history")
-if emp_exp < 1:
-    risks.append("Very low employment experience")
-if loan_int_rate > 15:
-    risks.append("High interest rate")
-
-if len(risks) == 0:
-    st.success("No major risk factors detected")
-else:
-    for r in risks:
-        st.error(r)
-
-st.subheader("Visual Insights")
-
-fig1 = px.bar(
-    x=["Income", "Loan Amount"],
-    y=[income, loan_amt],
-    title="Income vs Loan Amount"
-)
-st.plotly_chart(fig1, use_container_width=True)
-
-fig2 = px.line(
-    x=["Credit Score", "Credit History Length"],
-    y=[credit_score, cred_hist],
-    markers=True,
-    title="Credit Health Indicators"
-)
-st.plotly_chart(fig2, use_container_width=True)
+    st.subheader("Visual Insights")
+    for col in num_cols:
+        plt.figure(figsize=(6,4))
+        sns.histplot(df, x=col, hue='loan_status', bins=20, kde=False, palette='Set2', alpha=0.7)
+        plt.axvline(input_df[col].values[0], color='red', linestyle='--')
+        st.pyplot(plt)
+        plt.clf()
