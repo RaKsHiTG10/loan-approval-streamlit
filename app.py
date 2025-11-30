@@ -2,78 +2,89 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+import shap
 import matplotlib.pyplot as plt
-import seaborn as sns
+from xgboost import XGBClassifier
 
-st.set_page_config(page_title="Loan Approval Prediction", layout="wide")
+st.set_page_config(page_title="Loan Approval System", layout="wide")
 
-# Load model files
 model = joblib.load("loan_xgb_model.pkl")
-le = joblib.load("label_encoder.pkl")
+label_encoders = joblib.load("label_encoder.pkl")
 num_cols = joblib.load("num_cols.pkl")
 cat_cols = joblib.load("cat_cols.pkl")
 
-# Load raw dataset (before encoding)
-df_raw = pd.read_csv("loan_data.csv")
+st.title("Loan Approval Prediction System")
 
-# Get original raw categories
-original_categories = {}
-for col in cat_cols:
-    original_categories[col] = sorted(df_raw[col].dropna().unique())
-
-# Prepare encoded dataset for visualizations
-df = df_raw.copy()
-for col in cat_cols:
-    df[col] = le.fit_transform(df[col])
-
-st.title("Loan Approval Prediction Dashboard")
-
-st.header("Enter Applicant Details")
+st.subheader("Enter Applicant Details")
 user_input = {}
 
-with st.form("loan_form"):
-    st.subheader("Numeric Features")
+col1, col2 = st.columns(2)
+with col1:
     for col in num_cols:
-        value = st.number_input(col, value=float(df_raw[col].median()))
-        user_input[col] = value
+        user_input[col] = st.number_input(col, value=0.0)
 
-    st.subheader("Categorical Features")
+with col2:
     for col in cat_cols:
-        selected = st.selectbox(col, original_categories[col])
-        encoded_value = le.transform([selected])[0]
-        user_input[col] = encoded_value
+        options = label_encoders[col].classes_
+        selected = st.selectbox(col, options)
+        user_input[col] = selected
 
-    submitted = st.form_submit_button("Predict")
+input_df = pd.DataFrame([user_input])
 
-if submitted:
-    input_df = pd.DataFrame([user_input])
+for col in cat_cols:
+    input_df[col] = label_encoders[col].transform(input_df[col])
 
-    st.subheader("Entered Data")
-    st.dataframe(input_df)
+st.divider()
 
-    prob = model.predict_proba(input_df)[0][1]
-    pred = model.predict(input_df)[0]
+st.subheader("Prediction Results")
 
-    st.subheader("Loan Decision")
-    st.write("Approved" if pred == 1 else "Rejected")
+prediction = model.predict(input_df)[0]
+prob = model.predict_proba(input_df)[0][1]
 
-    st.subheader("Approval Probability")
-    st.progress(int(prob * 100))
-    st.write(f"**{prob*100:.2f}%**")
+decision = "Approved" if prediction == 1 else "Rejected"
 
-    st.subheader("Risk Analysis")
-    if prob >= 0.75:
-        st.write("Low Risk")
-    elif prob >= 0.5:
-        st.write("Moderate Risk")
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric("Loan Decision", decision)
+with c2:
+    st.metric("Approval Probability", f"{prob*100:.2f}%")
+with c3:
+    risk = "Low Risk" if prob > 0.7 else "Medium Risk" if prob > 0.4 else "High Risk"
+    st.metric("Risk Analysis", risk)
+
+st.divider()
+
+st.subheader("Visual Insights")
+
+fig, ax = plt.subplots()
+shap.initjs()
+explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(input_df)
+shap.force_plot(explainer.expected_value, shap_values, input_df, matplotlib=True)
+st.pyplot(fig)
+
+st.write("")
+st.subheader("Feature Importance")
+fig2, ax2 = plt.subplots()
+importance = model.feature_importances_
+sorted_idx = np.argsort(importance)[::-1]
+ax2.bar(range(len(importance)), importance[sorted_idx])
+ax2.set_xticks(range(len(importance)))
+ax2.set_xticklabels(input_df.columns[sorted_idx], rotation=90)
+st.pyplot(fig2)
+
+st.write("")
+st.subheader("Column vs Target Comparison")
+
+uploaded_df = st.file_uploader("Upload Dataset with Target Column (Optional)", type=["csv"])
+
+if uploaded_df:
+    df = pd.read_csv(uploaded_df)
+    if "Loan_Status" in df.columns:
+        col_to_show = st.selectbox("Select Column", df.columns)
+        fig3, ax3 = plt.subplots()
+        df.groupby(col_to_show)["Loan_Status"].mean().plot(kind="bar", ax=ax3)
+        ax3.set_ylabel("Approval Rate")
+        st.pyplot(fig3)
     else:
-        st.write("High Risk")
-
-    st.subheader("Visual Insights")
-
-    for col in num_cols:
-        fig, ax = plt.subplots(figsize=(6, 4))
-        sns.histplot(df, x=col, hue='loan_status', bins=20, ax=ax, alpha=0.6)
-        ax.axvline(input_df[col].iloc[0], color='red', linestyle='--', linewidth=2)
-        ax.set_title(f"{col} vs Loan Status")
-        st.pyplot(fig)
+        st.error("Dataset must contain 'Loan_Status' column.")
