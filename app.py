@@ -1,58 +1,46 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
+import numpy as np
+import joblib
 import shap
-import pickle
-import xgboost as xgb
 import matplotlib.pyplot as plt
 
+model = joblib.load("loan_xgb_model.pkl")
+encoders = joblib.load("label_encoders.pkl")
+num_cols = joblib.load("num_cols.pkl")
+cat_cols = joblib.load("cat_cols.pkl")
 
-@st.cache_resource
-def load_files():
-    with open("loan_xgb_model.pkl", "rb") as f:
-        model = pickle.load(f)
-    with open("label_encoder.pkl", "rb") as f:
-        label_encoders = pickle.load(f)
-    with open("num_cols.pkl", "rb") as f:
-        num_cols = pickle.load(f)
-    with open("cat_cols.pkl", "rb") as f:
-        cat_cols = pickle.load(f)
-    return model, label_encoders, num_cols, cat_cols
+st.set_page_config(page_title="Loan Approval Prediction", layout="wide")
 
+st.title("Loan Approval Prediction App")
 
-model, label_encoders, num_cols, cat_cols = load_files()
+with st.form("loan_form"):
 
-st.set_page_config(page_title="Loan Approval Predictor", layout="wide")
+    loan_intent = st.selectbox(
+        "Loan Intent",
+        options=sorted(encoders["loan_intent"].classes_)
+    )
 
-st.title("Loan Approval Prediction Dashboard")
-st.write("Enter applicant and loan details to check approval likelihood.")
+    loan_int_rate = st.number_input("Loan Interest Rate (%)", min_value=0.0, max_value=25.0, step=0.01)
+    loan_percent_income = st.number_input("Loan Percent Income", min_value=0.0, max_value=1.0, step=0.01)
 
+    cb_person_cred_hist_length = st.number_input(
+        "Credit History Length (Years)", 
+        min_value=0.0, max_value=20.0, step=0.1
+    )
 
-st.sidebar.header("User Input Parameters")
+    credit_score = st.number_input("Credit Score", min_value=300.0, max_value=850.0, step=1.0)
 
-def get_user_input():
-    person_age = st.sidebar.number_input("Age", 18, 100, 25)
-    person_gender = st.sidebar.selectbox("Gender (0=Male, 1=Female)", [0, 1])
-    person_education = st.sidebar.number_input("Education Level (0–5)", 0, 5, 3)
-    person_income = st.sidebar.number_input("Annual Income", 0, 500000, 50000)
-    person_emp_exp = st.sidebar.number_input("Employment Experience (Years)", 0, 50, 1)
-    person_home_ownership = st.sidebar.number_input("Home Ownership (0–4)", 0, 4, 3)
-    loan_amnt = st.sidebar.number_input("Loan Amount", 0, 100000, 5000)
-    loan_intent = st.sidebar.number_input("Loan Intent (0–6)", 0, 6, 2)
-    loan_int_rate = st.sidebar.number_input("Interest Rate (%)", 1.0, 40.0, 10.0)
-    loan_percent_income = st.sidebar.number_input("Loan Percent Income (0–2)", 0.0, 2.0, 0.2)
-    cb_person_cred_hist_length = st.sidebar.number_input("Credit History Length", 0, 50, 3)
-    credit_score = st.sidebar.number_input("Credit Score (300–850)", 300, 850, 600)
-    previous_loan_defaults_on_file = st.sidebar.selectbox("Previous Defaults (0/1)", [0, 1])
+    previous_loan_defaults_on_file = st.selectbox(
+        "Previous Loan Defaults",
+        ["No", "Yes"]
+    )
 
-    data = {
-        "person_age": person_age,
-        "person_gender": person_gender,
-        "person_education": person_education,
-        "person_income": person_income,
-        "person_emp_exp": person_emp_exp,
-        "person_home_ownership": person_home_ownership,
-        "loan_amnt": loan_amnt,
+    submit = st.form_submit_button("Submit")
+
+if submit:
+
+    input_data = {
         "loan_intent": loan_intent,
         "loan_int_rate": loan_int_rate,
         "loan_percent_income": loan_percent_income,
@@ -61,49 +49,44 @@ def get_user_input():
         "previous_loan_defaults_on_file": previous_loan_defaults_on_file
     }
 
-    df = pd.DataFrame([data])
-    return df
+    df_input = pd.DataFrame([input_data])
 
-df_input = get_user_input()
-
-st.subheader("Input Data")
-st.write(df_input)
-
-def encode_inputs(df):
-    df_copy = df.copy()
     for col in cat_cols:
-        if col in df_copy.columns:
-            le = label_encoders[col]
-            df_copy[col] = le.transform(df_copy[col].astype(str))
-    return df_copy
+        df_input[col] = encoders[col].transform(df_input[col])
 
-encoded_df = encode_inputs(df_input)
+    prediction = model.predict(df_input)[0]
+    prob = model.predict_proba(df_input)[0][1]
 
-prediction = model.predict(encoded_df)[0]
-prob = model.predict_proba(encoded_df)[0][1]
+    st.subheader("Prediction Result")
 
-st.subheader("Prediction Result")
-st.write(f"**Loan Status Prediction:** {'Approved' if prediction == 1 else 'Rejected'}")
-st.write(f"**Approval Probability:** {prob:.2f}")
+    if prediction == 1:
+        st.success(f"Loan Approved (Probability: {prob:.2f})")
+    else:
+        st.error(f"Loan Not Approved (Probability: {prob:.2f})")
 
+    st.subheader("SHAP Feature Importance")
 
-st.subheader("Feature Importance")
+    try:
+        xgb_model = model.named_steps["model"]
+        scaler = model.named_steps["scaler"]
+        explainer = shap.Explainer(xgb_model)
+        shap_values = explainer(scaler.transform(df_input))
 
-fig, ax = plt.subplots()
-xgb.plot_importance(model, ax=ax)
-st.pyplot(fig)
+        fig, ax = plt.subplots(figsize=(8, 5))
+        shap.plots.bar(shap_values[0], show=False)
+        st.pyplot(fig)
 
+    except Exception as e:
+        st.warning("SHAP could not be generated.")
+        st.text(str(e))
 
-st.subheader("SHAP Explainability")
+    st.subheader("Feature Importance (XGBoost)")
 
-explainer = shap.Explainer(model)
-shap_values = explainer(encoded_df)
+    importances = model.named_steps["model"].feature_importances_
+    sorted_idx = np.argsort(importances)[::-1]
 
-st.write("### SHAP Summary Plot")
-fig_summary = plt.figure()
-shap.summary_plot(shap_values.values, encoded_df, show=False)
-st.pyplot(fig_summary)
-
-st.write("### SHAP Force Plot (Single Prediction)")
-fig_force = shap.plots.force(shap_values[0], matplotlib=True)
-st.pyplot(fig_force)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(range(len(importances)), importances[sorted_idx])
+    ax.set_xticks(range(len(importances)))
+    ax.set_xticklabels(df_input.columns[sorted_idx], rotation=90)
+    st.pyplot(fig)
