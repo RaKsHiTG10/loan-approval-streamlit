@@ -33,21 +33,34 @@ st.title("Loan Approval Prediction App")
 
 with st.form("loan_form"):
     person_age = st.number_input("Age", min_value=20.0, max_value=39.0, step=1.0)
-    person_gender = st.selectbox("Gender", options=sorted(encoders["person_gender"].classes_))
-    person_education = st.selectbox("Education Level", options=sorted(encoders["person_education"].classes_))
+    
+    person_gender = st.selectbox(
+        "Gender", options=list(encoders["person_gender"].classes_)
+    )
+    
+    person_education = st.selectbox(
+        "Education Level", options=list(encoders["person_education"].classes_)
+    )
+    
+    person_home_ownership = st.selectbox(
+        "Home Ownership", options=list(encoders["person_home_ownership"].classes_)
+    )
+    
+    loan_intent = st.selectbox(
+        "Loan Intent", options=list(encoders["loan_intent"].classes_)
+    )
+    
     person_income = st.number_input("Annual Income", min_value=8000.0, max_value=168667.125, step=100.0)
     person_emp_exp = st.number_input("Employment Experience (years)", min_value=0.0, max_value=18.5, step=0.5)
-    person_home_ownership = st.selectbox("Home Ownership", options=sorted(encoders["person_home_ownership"].classes_))
     loan_amnt = st.number_input("Loan Amount", min_value=500.0, max_value=23093.125, step=100.0)
-    loan_intent = st.selectbox("Loan Intent", options=sorted(encoders["loan_intent"].classes_))
     loan_int_rate = st.number_input("Loan Interest Rate (%)", min_value=5.42, max_value=19.59, step=0.01)
     loan_percent_income = st.number_input("Loan Percent Income", min_value=0.0, max_value=0.37, step=0.01)
     cb_person_cred_hist_length = st.number_input("Credit History Length (years)", min_value=2.0, max_value=15.5, step=0.5)
     credit_score = st.number_input("Credit Score", min_value=497.5, max_value=773.5, step=1.0)
-
+    
     previous_default_display = st.selectbox("Previous Loan Defaults", options=["No", "Yes"])
     previous_default_mapped = {"No": "N", "Yes": "Y"}[previous_default_display]
-
+    
     submit = st.form_submit_button("Submit")
 
 if submit:
@@ -68,22 +81,26 @@ if submit:
     }
 
     df_input = pd.DataFrame([input_data])
-
+    
     for col in num_cols:
         df_input[col] = df_input[col].astype(float)
-
+    
     for col in cat_cols:
-        df_input[col] = encoders[col].transform(df_input[col].astype(str))
-
+        val = df_input[col][0]
+        if val not in encoders[col].classes_:
+            st.error(f"Invalid value for {col}: {val}")
+            st.stop()
+        df_input[col] = encoders[col].transform(df_input[col])
+    
     prediction = model.predict(df_input)[0]
     prob = model.predict_proba(df_input)[0][1]
-
+    
     st.subheader("Prediction")
     if prediction == 1:
         st.success(f"Loan Approved (Probability: {prob:.2f})")
     else:
         st.error(f"Loan Not Approved (Probability: {prob:.2f})")
-
+    
     st.subheader("SHAP Feature Importance")
     try:
         xgb_model = model.named_steps["model"]
@@ -96,7 +113,7 @@ if submit:
     except Exception as e:
         st.warning("SHAP could not be generated.")
         st.text(str(e))
-
+    
     st.subheader("XGBoost Feature Importance")
     importances = model.named_steps["model"].feature_importances_
     order = np.argsort(importances)[::-1]
