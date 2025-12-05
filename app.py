@@ -78,10 +78,12 @@ with st.form("loan_form"):
         "Credit Score", min_value=497.5, max_value=773.5, step=1.0
     )
 
-    previous_loan_defaults_on_file = st.selectbox(
+    previous_default_display = st.selectbox(
         "Previous Loan Defaults",
-        options=sorted(encoders["previous_loan_defaults_on_file"].classes_)
+        options=["No", "Yes"]        
     )
+
+    previous_default_mapped = {"No": "N", "Yes": "Y"}[previous_default_display]
 
     submit = st.form_submit_button("Submit")
 
@@ -99,7 +101,7 @@ if submit:
         "loan_percent_income": loan_percent_income,
         "cb_person_cred_hist_length": cb_person_cred_hist_length,
         "credit_score": credit_score,
-        "previous_loan_defaults_on_file": previous_loan_defaults_on_file
+        "previous_loan_defaults_on_file": previous_default_mapped
     }
 
     df_input = pd.DataFrame([input_data])
@@ -108,8 +110,7 @@ if submit:
         df_input[col] = df_input[col].astype(float)
 
     for col in cat_cols:
-        df_input[col] = df_input[col].astype(str)
-        df_input[col] = encoders[col].transform(df_input[col])
+        df_input[col] = encoders[col].transform(df_input[col].astype(str))
 
     prediction = model.predict(df_input)[0]
     prob = model.predict_proba(df_input)[0][1]
