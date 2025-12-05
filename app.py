@@ -73,6 +73,7 @@ if submit:
         df_input[col] = df_input[col].astype(float)
 
     for col in cat_cols:
+        # Transform safely using encoder
         df_input[col] = encoders[col].transform(df_input[col].astype(str))
 
     prediction = model.predict(df_input)[0]
@@ -90,7 +91,6 @@ if submit:
         scaler = model.named_steps["scaler"]
         explainer = shap.Explainer(xgb_model)
         shap_values = explainer(scaler.transform(df_input))
-
         fig, ax = plt.subplots(figsize=(8, 5))
         shap.plots.bar(shap_values[0], show=False)
         st.pyplot(fig)
@@ -101,7 +101,6 @@ if submit:
     st.subheader("XGBoost Feature Importance")
     importances = model.named_steps["model"].feature_importances_
     order = np.argsort(importances)[::-1]
-
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(range(len(importances)), importances[order])
     ax.set_xticks(range(len(importances)))
