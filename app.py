@@ -73,8 +73,11 @@ if submit:
         df_input[col] = df_input[col].astype(float)
 
     for col in cat_cols:
-        # Transform safely using encoder
-        df_input[col] = encoders[col].transform(df_input[col].astype(str))
+        try:
+            df_input[col] = encoders[col].transform(df_input[col].astype(str))
+        except ValueError:
+            # if unseen label, map to most common class in training
+            df_input[col] = encoders[col].transform([encoders[col].classes_[0]]*len(df_input))
 
     prediction = model.predict(df_input)[0]
     prob = model.predict_proba(df_input)[0][1]
