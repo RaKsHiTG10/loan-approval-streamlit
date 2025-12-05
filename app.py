@@ -44,10 +44,10 @@ with st.form("loan_form"):
     loan_percent_income = st.number_input("Loan Percent Income", min_value=0.0, max_value=0.37, step=0.01)
     cb_person_cred_hist_length = st.number_input("Credit History Length (years)", min_value=2.0, max_value=15.5, step=0.5)
     credit_score = st.number_input("Credit Score", min_value=497.5, max_value=773.5, step=1.0)
-    previous_loan_defaults_on_file = st.selectbox(
-        "Previous Loan Defaults", 
-        options=sorted(encoders["previous_loan_defaults_on_file"].classes_)
-    )
+
+    previous_default_display = st.selectbox("Previous Loan Defaults", options=["No", "Yes"])
+    previous_default_mapped = {"No": "N", "Yes": "Y"}[previous_default_display]
+
     submit = st.form_submit_button("Submit")
 
 if submit:
@@ -64,7 +64,7 @@ if submit:
         "loan_percent_income": loan_percent_income,
         "cb_person_cred_hist_length": cb_person_cred_hist_length,
         "credit_score": credit_score,
-        "previous_loan_defaults_on_file": previous_loan_defaults_on_file
+        "previous_loan_defaults_on_file": previous_default_mapped
     }
 
     df_input = pd.DataFrame([input_data])
@@ -90,6 +90,7 @@ if submit:
         scaler = model.named_steps["scaler"]
         explainer = shap.Explainer(xgb_model)
         shap_values = explainer(scaler.transform(df_input))
+
         fig, ax = plt.subplots(figsize=(8, 5))
         shap.plots.bar(shap_values[0], show=False)
         st.pyplot(fig)
@@ -100,6 +101,7 @@ if submit:
     st.subheader("XGBoost Feature Importance")
     importances = model.named_steps["model"].feature_importances_
     order = np.argsort(importances)[::-1]
+
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(range(len(importances)), importances[order])
     ax.set_xticks(range(len(importances)))
