@@ -33,58 +33,21 @@ st.title("Loan Approval Prediction App")
 
 with st.form("loan_form"):
     person_age = st.number_input("Age", min_value=20.0, max_value=39.0, step=1.0)
-
-    person_gender = st.selectbox(
-        "Gender", options=sorted(encoders["person_gender"].classes_)
+    person_gender = st.selectbox("Gender", options=sorted(encoders["person_gender"].classes_))
+    person_education = st.selectbox("Education Level", options=sorted(encoders["person_education"].classes_))
+    person_income = st.number_input("Annual Income", min_value=8000.0, max_value=168667.125, step=100.0)
+    person_emp_exp = st.number_input("Employment Experience (years)", min_value=0.0, max_value=18.5, step=0.5)
+    person_home_ownership = st.selectbox("Home Ownership", options=sorted(encoders["person_home_ownership"].classes_))
+    loan_amnt = st.number_input("Loan Amount", min_value=500.0, max_value=23093.125, step=100.0)
+    loan_intent = st.selectbox("Loan Intent", options=sorted(encoders["loan_intent"].classes_))
+    loan_int_rate = st.number_input("Loan Interest Rate (%)", min_value=5.42, max_value=19.59, step=0.01)
+    loan_percent_income = st.number_input("Loan Percent Income", min_value=0.0, max_value=0.37, step=0.01)
+    cb_person_cred_hist_length = st.number_input("Credit History Length (years)", min_value=2.0, max_value=15.5, step=0.5)
+    credit_score = st.number_input("Credit Score", min_value=497.5, max_value=773.5, step=1.0)
+    previous_loan_defaults_on_file = st.selectbox(
+        "Previous Loan Defaults", 
+        options=sorted(encoders["previous_loan_defaults_on_file"].classes_)
     )
-
-    person_education = st.selectbox(
-        "Education Level", options=sorted(encoders["person_education"].classes_)
-    )
-
-    person_income = st.number_input(
-        "Annual Income", min_value=8000.0, max_value=168667.125, step=100.0
-    )
-
-    person_emp_exp = st.number_input(
-        "Employment Experience (years)", min_value=0.0, max_value=18.5, step=0.5
-    )
-
-    person_home_ownership = st.selectbox(
-        "Home Ownership", options=sorted(encoders["person_home_ownership"].classes_)
-    )
-
-    loan_amnt = st.number_input(
-        "Loan Amount", min_value=500.0, max_value=23093.125, step=100.0
-    )
-
-    loan_intent = st.selectbox(
-        "Loan Intent", options=sorted(encoders["loan_intent"].classes_)
-    )
-
-    loan_int_rate = st.number_input(
-        "Loan Interest Rate (%)", min_value=5.42, max_value=19.59, step=0.01
-    )
-
-    loan_percent_income = st.number_input(
-        "Loan Percent Income", min_value=0.0, max_value=0.37, step=0.01
-    )
-
-    cb_person_cred_hist_length = st.number_input(
-        "Credit History Length (years)", min_value=2.0, max_value=15.5, step=0.5
-    )
-
-    credit_score = st.number_input(
-        "Credit Score", min_value=497.5, max_value=773.5, step=1.0
-    )
-
-    previous_default_display = st.selectbox(
-        "Previous Loan Defaults",
-        options=["No", "Yes"]        
-    )
-
-    previous_default_mapped = {"No": "N", "Yes": "Y"}[previous_default_display]
-
     submit = st.form_submit_button("Submit")
 
 if submit:
@@ -101,7 +64,7 @@ if submit:
         "loan_percent_income": loan_percent_income,
         "cb_person_cred_hist_length": cb_person_cred_hist_length,
         "credit_score": credit_score,
-        "previous_loan_defaults_on_file": previous_default_mapped
+        "previous_loan_defaults_on_file": previous_loan_defaults_on_file
     }
 
     df_input = pd.DataFrame([input_data])
@@ -127,7 +90,6 @@ if submit:
         scaler = model.named_steps["scaler"]
         explainer = shap.Explainer(xgb_model)
         shap_values = explainer(scaler.transform(df_input))
-
         fig, ax = plt.subplots(figsize=(8, 5))
         shap.plots.bar(shap_values[0], show=False)
         st.pyplot(fig)
@@ -138,7 +100,6 @@ if submit:
     st.subheader("XGBoost Feature Importance")
     importances = model.named_steps["model"].feature_importances_
     order = np.argsort(importances)[::-1]
-
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(range(len(importances)), importances[order])
     ax.set_xticks(range(len(importances)))
